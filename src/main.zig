@@ -8,12 +8,26 @@ pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(gpa.allocator());
     defer arena.deinit();
 
-    const arena_allocator = arena.allocator();
-    const max_bytes: usize = 500 * 2;
-
     const file = try std.fs.cwd().openFile("test.json", .{});
     defer file.close();
 
+    const arena_allocator = arena.allocator();
+
+    const max_bytes: usize = 500 * 2;
     const content = try file.readToEndAlloc(arena_allocator, max_bytes);
-    std.debug.print("{s}", .{content});
+    const stand_point = skip_whitespace(content);
+    std.debug.print("{}", .{stand_point});
+}
+
+// write a function that skips the ws
+fn skip_whitespace(content: []u8) usize {
+    var stand_point: usize = 0;
+    while (stand_point < content.len) {
+        switch (content[stand_point]) {
+            ' ', '\n', '\t', '\r' => stand_point += 1,
+            else => break,
+        }
+    }
+
+    return stand_point;
 }
