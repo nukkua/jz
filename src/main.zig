@@ -1,5 +1,32 @@
 const std = @import("std");
 
+// a lexer == lector, cuando se lee, se lo hace por palabras, pero en codigo se hace por char, por lo tanto
+// cada simbolo es un token
+const Lexer = struct {
+    valid_point: usize = 0,
+    content: []const u8,
+
+    pub fn init(content: []const u8) Lexer {
+        return .{ .content = content };
+    }
+    pub fn next_token(self: *Lexer) usize {
+        self.skip_whitespace();
+    }
+
+    pub fn show(self: *const Lexer) void {
+        std.debug.print("{}", .{self.valid_point});
+    }
+
+    fn skip_whitespace(self: *Lexer) void {
+        while (self.valid_point < self.content.len) {
+            switch (self.content[self.valid_point]) {
+                ' ', '\n', '\t' => self.valid_point += 1,
+                else => break,
+            }
+        }
+    }
+};
+
 pub fn main() !void {
     // read a file in the heap
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -15,19 +42,9 @@ pub fn main() !void {
 
     const max_bytes: usize = 500 * 2;
     const content = try file.readToEndAlloc(arena_allocator, max_bytes);
-    const stand_point = skip_whitespace(content);
-    std.debug.print("{}", .{stand_point});
+
+    var lexer = Lexer.init(content);
+    lexer.next_token();
+    lexer.show();
 }
 
-// write a function that skips the ws
-fn skip_whitespace(content: []u8) usize {
-    var stand_point: usize = 0;
-    while (stand_point < content.len) {
-        switch (content[stand_point]) {
-            ' ', '\n', '\t', '\r' => stand_point += 1,
-            else => break,
-        }
-    }
-
-    return stand_point;
-}
