@@ -1,14 +1,15 @@
-"nombre": "Juan",
-"edad": 30,
-"activo": true,
-"direccion": {
-    "calle": "Av. Principal",
-    "numero": 123
-},
-"hobbies": [
-    "programar",
-    "leer",
-    "deportes"
-],
-"config": null
+{
+    "activo": true,
+    "edad": 30,
+    "nombre": "Juan",
+    "config": null,
+    "direccion": {
+        "calle": "Av. Principal",
+        "numero": 123
+    },
+    "hobbies": [
+        "programar",
+        "leer",
+        "deportes"
+    ]
 }

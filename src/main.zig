@@ -1,8 +1,5 @@
 const std = @import("std");
 
-// a lexer == lector, cuando se lee, se lo hace por palabras, pero en codigo se hace por char, por lo tanto
-// cada simbolo es un token
-//
 const TokenType = enum {
     object_start,
     object_end,
@@ -23,6 +20,10 @@ const Token = struct {
     start: usize,
     end: usize,
     type: TokenType,
+
+    pub fn get(self: *const Token, content: []const u8) []const u8 {
+        return content[self.start..self.end];
+    }
 };
 
 const Lexer = struct {
@@ -39,19 +40,28 @@ const Lexer = struct {
         const start = self.valid_point;
 
         const token = switch (self.content[self.valid_point]) {
-            '{' => Token{ .start = start, .end = self.valid_point, .type = TokenType.object_start },
-            '}' => Token{ .start = start, .end = self.valid_point, .type = TokenType.object_end },
-            '[' => Token{ .start = start, .end = self.valid_point, .type = TokenType.array_start },
-            ']' => Token{ .start = start, .end = self.valid_point, .type = TokenType.array_end },
-            ':' => {
+            '{' => {
                 self.advance();
-                return Token{ .start = start, .end = start, .type = TokenType.colon };
+                return Token{ .start = start, .end = start, .type = TokenType.object_start };
             },
-            ',' => Token{ .start = start, .end = self.valid_point, .type = TokenType.comma },
-            'n' => Token{ .start = start, .end = self.valid_point, .type = TokenType.null_token },
-
+            '}' => {
+                self.advance();
+                return Token{ .start = start, .end = start, .type = TokenType.object_end };
+            },
+            '[' => {
+                self.advance();
+                return Token{ .start = start, .end = self.valid_point, .type = TokenType.array_start };
+            },
+            ']' => {
+                self.advance();
+                return Token{ .start = start, .end = self.valid_point, .type = TokenType.array_end };
+            },
+            ':' => self.parse_colon(),
+            ',' => self.parse_comma(),
+            'n' => self.parse_null(),
             '"' => self.parse_string(),
-            '0'...'9' => Token{ .start = start, .end = undefined, .type = TokenType.number },
+            't', 'f' => self.parse_boolean(),
+            '0'...'9' => self.parse_number(),
             else => Token{ .start = start, .end = self.valid_point, .type = TokenType.not_valid },
         };
 
@@ -60,6 +70,50 @@ const Lexer = struct {
     fn advance(self: *Lexer) void {
         if (self.valid_point >= self.content.len) return;
         self.valid_point += 1;
+    }
+
+    fn parse_boolean(self: *Lexer) Token {
+        const start = self.valid_point;
+        switch (self.content[start]) {
+            't' => {
+                self.valid_point += 3;
+                const end = self.valid_point;
+                self.advance();
+                return Token{ .start = start, .end = end, .type = TokenType.boolean };
+            },
+
+            'f' => {
+                self.valid_point += 4;
+                const end = self.valid_point;
+                self.advance();
+                return Token{ .start = start, .end = end, .type = TokenType.boolean };
+            },
+
+            else => {
+                self.advance();
+                return Token{ .start = start, .end = start, .type = TokenType.not_valid };
+            },
+        }
+    }
+    fn parse_null(self: *Lexer) Token {
+        const start = self.valid_point;
+        self.valid_point += 3;
+        const end = self.valid_point;
+        self.advance();
+
+        return Token{ .start = start, .end = end, .type = TokenType.null_token };
+    }
+    fn parse_comma(self: *Lexer) Token {
+        const start = self.valid_point;
+        self.advance();
+
+        return Token{ .start = start, .end = start, .type = TokenType.comma };
+    }
+    fn parse_colon(self: *Lexer) Token {
+        const start = self.valid_point;
+        self.advance();
+
+        return Token{ .start = start, .end = start, .type = TokenType.colon };
     }
 
     fn parse_string(self: *Lexer) Token {
@@ -75,6 +129,18 @@ const Lexer = struct {
         }
 
         return Token{ .start = start, .end = start, .type = TokenType.not_valid };
+    }
+
+    fn parse_number(self: *Lexer) Token {
+        const start = self.valid_point;
+        while (self.valid_point <= self.content.len) : (self.valid_point += 1) {
+            switch (self.content[self.valid_point]) {
+                '0'...'9', '.', 'e', 'E', '+', '-' => continue,
+                else => break,
+            }
+        }
+        const end = self.valid_point - 1;
+        return Token{ .start = start, .end = end, .type = TokenType.number };
     }
 
     pub fn show(self: *const Lexer) void {
@@ -108,13 +174,10 @@ pub fn main() !void {
     const content = try file.readToEndAlloc(arena_allocator, max_bytes);
 
     var lexer = Lexer.init(content);
+    var iter: usize = 0;
 
-    const last_token = lexer.next_token();
-    std.debug.print("{any}", .{last_token});
-
-    const last_token_2 = lexer.next_token();
-    std.debug.print("{any}", .{last_token_2});
-
-    const last_token_3 = lexer.next_token();
-    std.debug.print("{any}", .{last_token_3});
+    while (iter <= 9) : (iter += 1) {
+        const last_token = lexer.next_token();
+        std.debug.print("{any}\n", .{last_token});
+    }
 }
