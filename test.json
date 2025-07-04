@@ -1,15 +1,7 @@
 {
-    "activo": true,
-    "edad": 30,
-    "nombre": "Juan",
-    "config": null,
-    "direccion": {
-        "calle": "Av. Principal",
-        "numero": 123
-    },
-    "hobbies": [
-        "programar",
-        "leer",
-        "deportes"
-    ]
+    "config": "pan",
+    "pancakes": 10,
+    "trabas": null,
+    "gordas": null,
+    "bis": null
 }

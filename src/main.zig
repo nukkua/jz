@@ -1,5 +1,14 @@
 const std = @import("std");
 
+const Json = union(enum) {
+    object: std.StringHashMap(Json),
+    array: std.ArrayList(Json),
+    string: []const u8,
+    number: usize,
+    boolean: bool,
+    null_value: void,
+};
+
 const TokenType = enum {
     object_start,
     object_end,
@@ -35,7 +44,8 @@ const Lexer = struct {
     }
     pub fn next_token(self: *Lexer) Token {
         self.skip_whitespace();
-        if (self.valid_point >= self.content.len) return Token{ .start = self.valid_point, .end = self.valid_point, .type = TokenType.eof };
+        if (self.valid_point >= self.content.len)
+            return Token{ .start = self.valid_point, .end = self.valid_point, .type = TokenType.eof };
 
         const start = self.valid_point;
 
@@ -64,7 +74,6 @@ const Lexer = struct {
             '0'...'9' => self.parse_number(),
             else => Token{ .start = start, .end = self.valid_point, .type = TokenType.not_valid },
         };
-
         return token;
     }
     fn advance(self: *Lexer) void {
@@ -97,7 +106,9 @@ const Lexer = struct {
     }
     fn parse_null(self: *Lexer) Token {
         const start = self.valid_point;
+
         self.valid_point += 3;
+
         const end = self.valid_point;
         self.advance();
 
@@ -120,7 +131,7 @@ const Lexer = struct {
         const start = self.valid_point;
         self.advance();
 
-        while (self.valid_point <= self.content.len) : (self.advance()) {
+        while (self.valid_point < self.content.len) : (self.advance()) {
             if (self.content[self.valid_point] == '"') {
                 const end = self.valid_point;
                 self.advance();
@@ -133,13 +144,13 @@ const Lexer = struct {
 
     fn parse_number(self: *Lexer) Token {
         const start = self.valid_point;
-        while (self.valid_point <= self.content.len) : (self.valid_point += 1) {
+        while (self.valid_point < self.content.len) : (self.valid_point += 1) {
             switch (self.content[self.valid_point]) {
                 '0'...'9', '.', 'e', 'E', '+', '-' => continue,
                 else => break,
             }
         }
-        const end = self.valid_point - 1;
+        const end = self.valid_point;
         return Token{ .start = start, .end = end, .type = TokenType.number };
     }
 
@@ -154,6 +165,110 @@ const Lexer = struct {
                 else => break,
             }
         }
+    }
+};
+
+const ParseError = error{
+    UnexpectedToken,
+    ExpectedString,
+    InvalidNumber,
+    OutOfMemory,
+    UnexpectedCharacter,
+    UnterminatedString,
+    InvalidBoolean,
+    InvalidNull,
+};
+
+const Parser = struct {
+    allocator: std.mem.Allocator,
+    lexer: *Lexer,
+    current_token: Token = undefined,
+
+    pub fn init(allocator: std.mem.Allocator, lexer: *Lexer) Parser {
+        return .{
+            .allocator = allocator,
+            .lexer = lexer,
+            .current_token = lexer.next_token(),
+        };
+    }
+    pub fn parse(self: *Parser) ParseError!Json {
+        return self.parse_value();
+    }
+    fn go_to_next_token(self: *Parser) void {
+        self.current_token = self.lexer.next_token();
+    }
+
+    fn parse_value(self: *Parser) ParseError!Json {
+        const value = switch (self.current_token.type) {
+            .object_start => try self.store_object(),
+            .string => self.store_string(),
+            .null_token => self.store_null(),
+            .number => self.store_number(),
+            .not_valid => ParseError.UnexpectedCharacter,
+            else => ParseError.UnexpectedToken,
+        };
+
+        return value;
+    }
+    fn store_string(self: *Parser) Json {
+        const token = self.current_token;
+
+        return .{
+            .string = token.get(self.lexer.content)[1..],
+        };
+    }
+    fn store_null(_: *const Parser) Json {
+        return .{
+            .null_value = {},
+        };
+    }
+
+    fn store_number(self: *Parser) Json {
+        const token = self.current_token;
+        const token_value = token.get(self.lexer.content);
+
+        var it: usize = 0;
+        var value: usize = 0;
+
+        if (token_value.len == 1) value = token_value[0] - '0';
+
+        while (it < token_value.len) : (it += 1) {
+            value += std.math.pow(usize, 10, token_value.len - 1 - it) * (token_value[it] - '0');
+        }
+
+        return .{
+            .number = value,
+        };
+    }
+    fn store_object(self: *Parser) ParseError!Json {
+        var object = std.StringHashMap(Json).init(self.allocator);
+
+        while (true) {
+            self.go_to_next_token();
+            if (self.current_token.type != TokenType.string) return ParseError.ExpectedString;
+
+            const key_token = self.current_token;
+            const key = key_token.get(self.lexer.content)[1..];
+
+            self.go_to_next_token();
+            if (self.current_token.type != TokenType.colon) return ParseError.UnexpectedToken;
+
+            self.go_to_next_token();
+
+            const value = try self.parse_value();
+            try object.put(key, value);
+
+            self.go_to_next_token();
+
+            if (self.current_token.type == TokenType.object_end) {
+                break;
+            }
+            if (self.current_token.type != TokenType.comma) return ParseError.UnexpectedToken;
+        }
+
+        return Json{
+            .object = object,
+        };
     }
 };
 
@@ -174,10 +289,8 @@ pub fn main() !void {
     const content = try file.readToEndAlloc(arena_allocator, max_bytes);
 
     var lexer = Lexer.init(content);
-    var iter: usize = 0;
+    var parser = Parser.init(arena_allocator, &lexer);
 
-    while (iter <= 9) : (iter += 1) {
-        const last_token = lexer.next_token();
-        std.debug.print("{any}\n", .{last_token});
-    }
+    const JSON = try parser.parse();
+    std.debug.print("{any}", .{JSON.object.get("pancakes").?.number});
 }
